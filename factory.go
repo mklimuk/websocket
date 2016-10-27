@@ -1,0 +1,30 @@
+package websocket
+
+import (
+	"net/http"
+
+	ws "github.com/gorilla/websocket"
+)
+
+var upgrader = ws.Upgrader{
+	ReadBufferSize:  2048,
+	WriteBufferSize: 2048,
+}
+
+//Upgrader is a wrapper interface over gorilla websocket upgrader struct
+type connectionFactory interface {
+	UpgradeConnection(writer http.ResponseWriter, req *http.Request, channels []string) (connection, error)
+}
+
+type gorillaFactory struct {
+	u ws.Upgrader
+}
+
+func (g *gorillaFactory) UpgradeConnection(writer http.ResponseWriter, req *http.Request, channels []string) (connection, error) {
+	var err error
+	var w *ws.Conn
+	if w, err = g.u.Upgrade(writer, req, nil); err != nil {
+		return nil, err
+	}
+	return newConnection(w, make(chan []byte, 32), req.Host, channels), nil
+}
