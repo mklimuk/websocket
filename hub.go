@@ -41,13 +41,13 @@ type ConnListener interface {
 type hub struct {
 	//channels is a hashmap of hashmaps containing connections
 	channels  map[string]map[string]connection
-	bus       *event.Bus
+	bus       event.Bus
 	listeners map[string][]ConnListener
 	factory   connectionFactory
 }
 
 //NewHub is a hub constructor
-func NewHub(bus *event.Bus) Hub {
+func NewHub(bus event.Bus) Hub {
 	h := hub{make(map[string]map[string]connection), bus, make(map[string][]ConnListener), &gorillaFactory{}}
 	//bus is optional as we are able to broadcast by calling the Broadcast method
 	if bus != nil {
