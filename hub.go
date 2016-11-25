@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	log "github.com/Sirupsen/logrus"
-	"github.com/husar/event"
+	"github.com/mklimuk/husar/event"
 )
 
 //ConnectionType is used to specify the type of registered websocket connection
