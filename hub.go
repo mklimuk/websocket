@@ -32,7 +32,7 @@ type Hub interface {
 	RegisterListener(channel string, l ConnListener)
 }
 
-//ConnListener is a connection listener interface
+//ConnListener is a Connection listener interface
 type ConnListener interface {
 	Handle(msg interface{})
 }
@@ -40,38 +40,38 @@ type ConnListener interface {
 //hub maintains a list of active channels with associated websocket connections
 type hub struct {
 	//channels is a hashmap of hashmaps containing connections
-	channels  map[string]map[string]connection
+	channels  map[string]map[string]Connection
 	bus       event.Bus
 	listeners map[string][]ConnListener
-	factory   connectionFactory
+	factory   ConnectionFactory
 }
 
 //NewHub is a hub constructor
 func NewHub(bus event.Bus) Hub {
-	h := hub{make(map[string]map[string]connection), bus, make(map[string][]ConnListener), &gorillaFactory{}}
+	h := hub{make(map[string]map[string]Connection), bus, make(map[string][]ConnListener), &gorillaFactory{}}
 	//bus is optional as we are able to broadcast by calling the Broadcast method
 	if bus != nil {
 		bus.Subscribe(Broadcast, h.Broadcast)
 	}
-	h.channels[GeneralChannel] = make(map[string]connection)
+	h.channels[GeneralChannel] = make(map[string]Connection)
 	return Hub(&h)
 }
 
 func (h *hub) RegisterConnection(writer http.ResponseWriter, req *http.Request, channels []string, t ConnectionType) (string, error) {
 	var err error
-	var c connection
+	var c Connection
 	if c, err = h.factory.UpgradeConnection(writer, req, channels); err != nil {
 		return "", err
 	}
 	ID := c.ID()
 	if log.GetLevel() >= log.InfoLevel {
 		log.WithFields(log.Fields{"logger": "ws.hub", "method": "RegisterConnection", "conneciton": ID, "host": c.Host(), "channels": channels}).
-			Info("Registering a websocket connection")
+			Info("Registering a websocket Connection")
 	}
 	h.channels[GeneralChannel][ID] = c
 	for _, ch := range channels {
 		if _, ok := h.channels[ch]; !ok {
-			h.channels[ch] = make(map[string]connection)
+			h.channels[ch] = make(map[string]Connection)
 		}
 		h.channels[ch][ID] = c
 	}
@@ -88,7 +88,7 @@ func (h *hub) RegisterConnection(writer http.ResponseWriter, req *http.Request, 
 func (h *hub) RegisterListener(ch string, l ConnListener) {
 	if log.GetLevel() >= log.InfoLevel {
 		log.WithFields(log.Fields{"logger": "ws.hub", "method": "RegisterListener", "channel": ch}).
-			Info("Registering a connection listener")
+			Info("Registering a Connection listener")
 	}
 	h.listeners[ch] = append(h.listeners[ch], l)
 }
@@ -103,7 +103,7 @@ func (h *hub) Broadcast(msg []byte, channel string) {
 	}
 }
 
-func (h *hub) readFrom(c connection) {
+func (h *hub) readFrom(c Connection) {
 	defer h.cleanup(c)
 	in, intxt := c.In()
 	ctrl := c.Control()
@@ -112,13 +112,13 @@ func (h *hub) readFrom(c connection) {
 		case msg, ok := <-intxt:
 			if !ok {
 				if log.GetLevel() >= log.InfoLevel {
-					log.WithFields(log.Fields{"logger": "ws.hub", "method": "readFrom", "connection": c.ID()}).
+					log.WithFields(log.Fields{"logger": "ws.hub", "method": "readFrom", "Connection": c.ID()}).
 						Info("Text input channel is closed; aborting read loop")
 				}
 				return
 			}
 			if log.GetLevel() >= log.DebugLevel {
-				log.WithFields(log.Fields{"logger": "ws.hub", "method": "readFrom", "connection": c.ID(), "msg": msg}).
+				log.WithFields(log.Fields{"logger": "ws.hub", "method": "readFrom", "Connection": c.ID(), "msg": msg}).
 					Debug("Calling listeners and publishing message to the event bus")
 			}
 			h.callListeners(c, msg)
@@ -126,34 +126,34 @@ func (h *hub) readFrom(c connection) {
 		case msg, ok := <-in:
 			if !ok {
 				if log.GetLevel() >= log.InfoLevel {
-					log.WithFields(log.Fields{"logger": "ws.hub", "method": "readFrom", "connection": c.ID()}).
+					log.WithFields(log.Fields{"logger": "ws.hub", "method": "readFrom", "Connection": c.ID()}).
 						Info("Binary input channel is closed; aborting read loop")
 				}
 				return
 			}
 			if log.GetLevel() >= log.DebugLevel {
-				log.WithFields(log.Fields{"logger": "ws.hub", "method": "readFrom", "connection": c.ID(), "msg": msg}).
+				log.WithFields(log.Fields{"logger": "ws.hub", "method": "readFrom", "Connection": c.ID(), "msg": msg}).
 					Debug("Calling listeners and publishing message to the event bus")
 			}
 			h.callListeners(c, msg)
 			h.publishToBus(c, msg)
 		case <-ctrl:
-			// the connection was closed either internally or externally
+			// the Connection was closed either internally or externally
 			return
 		}
 	}
 }
 
-func (h *hub) cleanup(c connection) {
+func (h *hub) cleanup(c Connection) {
 	c.Close()
 	close(c.Out())
-	//delete the connection from broadcast channels
+	//delete the Connection from broadcast channels
 	for _, ch := range c.Channels() {
 		delete(h.channels[ch], c.ID())
 	}
 }
 
-func (h *hub) callListeners(c connection, msg interface{}) {
+func (h *hub) callListeners(c Connection, msg interface{}) {
 	for _, ch := range c.Channels() {
 		for _, l := range h.listeners[ch] {
 			l.Handle(msg)
@@ -161,7 +161,7 @@ func (h *hub) callListeners(c connection, msg interface{}) {
 	}
 }
 
-func (h *hub) publishToBus(c connection, msg interface{}) {
+func (h *hub) publishToBus(c Connection, msg interface{}) {
 	if h.bus == nil {
 		return
 	}

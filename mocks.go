@@ -147,12 +147,12 @@ type factoryMock struct {
 }
 
 //UpgradeConnection is a mocked method
-func (u *factoryMock) UpgradeConnection(writer http.ResponseWriter, req *http.Request, channels []string) (connection, error) {
+func (u *factoryMock) UpgradeConnection(writer http.ResponseWriter, req *http.Request, channels []string) (Connection, error) {
 	args := u.Called(writer, req, channels)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(connection), args.Error(1)
+	return args.Get(0).(Connection), args.Error(1)
 }
 
 //HubMock is the Hub interface mock

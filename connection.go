@@ -4,9 +4,10 @@ import (
 	"sync"
 	"time"
 
+	uuid "github.com/satori/go.uuid"
+
 	log "github.com/Sirupsen/logrus"
 	"github.com/gorilla/websocket"
-	"github.com/satori/go.uuid"
 )
 
 const (
@@ -23,9 +24,9 @@ const (
 	maxMessageSize = 2048
 )
 
-//connection is a wrapper over raw websocket that exposes read and write channels
+//Connection is a wrapper over raw websocket that exposes read and write channels
 //and defines read and write loops
-type connection interface {
+type Connection interface {
 	ID() string
 	ReadLoop()
 	WriteLoop(<-chan []byte)
@@ -37,8 +38,8 @@ type connection interface {
 	Channels() []string
 }
 
-//RawWebsocket is an interface wrapper over *websocket.connection
-type RawWebsocket interface {
+//rawWebsocket is an interface wrapper over *websocket.connection
+type rawWebsocket interface {
 	SetWriteDeadline(t time.Time) error
 	Close() error
 	SetReadLimit(limit int64)
@@ -52,7 +53,7 @@ type RawWebsocket interface {
 //conn represents a single client websocket connection
 type conn struct {
 	cid            string
-	ws             RawWebsocket
+	ws             rawWebsocket
 	control        chan bool
 	pong           chan bool
 	in             chan []byte
@@ -68,8 +69,8 @@ type conn struct {
 	maxMessageSize int
 }
 
-//Newconnection is the connection constructor
-func newConnection(ws RawWebsocket, out chan []byte, host string, channels []string) connection {
+//newConnection is the connection constructor
+func newConnection(ws rawWebsocket, out chan []byte, host string, channels []string) Connection {
 	c := &conn{
 		cid:            uuid.NewV4().String(),
 		ws:             ws,
@@ -88,7 +89,7 @@ func newConnection(ws RawWebsocket, out chan []byte, host string, channels []str
 		maxMessageSize: maxMessageSize,
 	}
 	c.ws.SetPongHandler(c.pongHandler)
-	return connection(c)
+	return Connection(c)
 }
 
 //ID returns connection's ID

@@ -11,16 +11,16 @@ var upgrader = ws.Upgrader{
 	WriteBufferSize: 2048,
 }
 
-//Upgrader is a wrapper interface over gorilla websocket upgrader struct
-type connectionFactory interface {
-	UpgradeConnection(writer http.ResponseWriter, req *http.Request, channels []string) (connection, error)
+//ConnectionFactory is a wrapper interface over gorilla websocket upgrader struct
+type ConnectionFactory interface {
+	UpgradeConnection(writer http.ResponseWriter, req *http.Request, channels []string) (Connection, error)
 }
 
 type gorillaFactory struct {
 	u ws.Upgrader
 }
 
-func (g *gorillaFactory) UpgradeConnection(writer http.ResponseWriter, req *http.Request, channels []string) (connection, error) {
+func (g *gorillaFactory) UpgradeConnection(writer http.ResponseWriter, req *http.Request, channels []string) (Connection, error) {
 	var err error
 	var w *ws.Conn
 	if w, err = g.u.Upgrade(writer, req, nil); err != nil {

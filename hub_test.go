@@ -49,8 +49,8 @@ func (suite *HubTestSuite) TestRegister() {
 }
 
 func (suite *HubTestSuite) TestListeners() {
-	ch := map[string]map[string]connection{
-		"test1": map[string]connection{
+	ch := map[string]map[string]Connection{
+		"test1": map[string]Connection{
 			"conn11": &ConnectionMock{},
 		},
 	}
@@ -81,12 +81,12 @@ func (suite *HubTestSuite) TestListeners() {
 }
 
 func (suite *HubTestSuite) TestBroadcast() {
-	ch := map[string]map[string]connection{
-		"test1": map[string]connection{
+	ch := map[string]map[string]Connection{
+		"test1": map[string]Connection{
 			"conn11": &ConnectionMock{},
 			"conn12": &ConnectionMock{},
 		},
-		"test2": map[string]connection{
+		"test2": map[string]Connection{
 			"conn21": &ConnectionMock{},
 		},
 	}
