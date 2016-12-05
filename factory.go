@@ -20,6 +20,11 @@ type gorillaFactory struct {
 	u ws.Upgrader
 }
 
+func NewFactory() ConnectionFactory {
+	g := gorillaFactory{ws.Upgrader{}}
+	return &g
+}
+
 func (g *gorillaFactory) UpgradeConnection(writer http.ResponseWriter, req *http.Request, channels []string) (Connection, error) {
 	var err error
 	var w *ws.Conn
