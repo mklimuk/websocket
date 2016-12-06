@@ -29,6 +29,7 @@ const (
 type Connection interface {
 	ID() string
 	ReadLoop()
+	ReadMessage() (int, []byte, error)
 	WriteLoop(<-chan []byte)
 	Close()
 	Control() chan bool
@@ -152,6 +153,10 @@ func (c *conn) Close() {
 	close(c.pong)
 	close(c.control)
 	c.closed = true
+}
+
+func (c *conn) ReadMessage() (int, []byte, error) {
+	return c.ws.ReadMessage()
 }
 
 //ReadLoop dispatches messages from the websocket to the output channel.

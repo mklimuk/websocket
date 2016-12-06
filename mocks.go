@@ -86,6 +86,12 @@ func (c *ConnectionMock) ID() string {
 	return args.String(0)
 }
 
+//ReadMessage is a mocked method
+func (c *ConnectionMock) ReadMessage() (int, []byte, error) {
+	args := c.Called()
+	return args.Int(0), args.Get(1).([]byte), args.Error(2)
+}
+
 //ReadLoop is a mocked method
 func (c *ConnectionMock) ReadLoop() {
 	c.Called()
