@@ -1,11 +1,9 @@
 package websocket
 
 import (
-	"fmt"
 	"net/http"
 
 	log "github.com/Sirupsen/logrus"
-	"github.com/mklimuk/husar/event"
 )
 
 //ConnectionType is used to specify the type of registered websocket connection
@@ -13,10 +11,8 @@ type ConnectionType byte
 
 const (
 	//GeneralChannel represents a channel broadcasting to all active connections
-	GeneralChannel string = "general"
-	//Broadcast is an event type that can be used to broadcast to websockets using the event bus
-	Broadcast event.Type     = "ws:broadcast"
-	none      ConnectionType = 0x00
+	GeneralChannel string         = "general"
+	none           ConnectionType = 0x00
 	//ReadOnly identifies a read only websocket connection
 	ReadOnly ConnectionType = 0x01
 	//WriteOnly identifies a write only websocket connection
@@ -41,18 +37,13 @@ type ConnListener interface {
 type hub struct {
 	//channels is a hashmap of hashmaps containing connections
 	channels  map[string]map[string]Connection
-	bus       event.Bus
 	listeners map[string][]ConnListener
 	factory   ConnectionFactory
 }
 
 //NewHub is a hub constructor
-func NewHub(bus event.Bus) Hub {
-	h := hub{make(map[string]map[string]Connection), bus, make(map[string][]ConnListener), &gorillaFactory{}}
-	//bus is optional as we are able to broadcast by calling the Broadcast method
-	if bus != nil {
-		bus.Subscribe(Broadcast, h.Broadcast)
-	}
+func NewHub() Hub {
+	h := hub{make(map[string]map[string]Connection), make(map[string][]ConnListener), &gorillaFactory{}}
 	h.channels[GeneralChannel] = make(map[string]Connection)
 	return Hub(&h)
 }
@@ -122,7 +113,6 @@ func (h *hub) readFrom(c Connection) {
 					Debug("Calling listeners and publishing message to the event bus")
 			}
 			h.callListeners(c, msg)
-			h.publishToBus(c, msg)
 		case msg, ok := <-in:
 			if !ok {
 				if log.GetLevel() >= log.InfoLevel {
@@ -136,7 +126,6 @@ func (h *hub) readFrom(c Connection) {
 					Debug("Calling listeners and publishing message to the event bus")
 			}
 			h.callListeners(c, msg)
-			h.publishToBus(c, msg)
 		case <-ctrl:
 			// the Connection was closed either internally or externally
 			return
@@ -145,7 +134,7 @@ func (h *hub) readFrom(c Connection) {
 }
 
 func (h *hub) cleanup(c Connection) {
-	c.Close()
+	c.CloseWithCode(CloseNormalClosure)
 	close(c.Out())
 	//delete the Connection from broadcast channels
 	for _, ch := range c.Channels() {
@@ -158,14 +147,5 @@ func (h *hub) callListeners(c Connection, msg interface{}) {
 		for _, l := range h.listeners[ch] {
 			l.Handle(msg)
 		}
-	}
-}
-
-func (h *hub) publishToBus(c Connection, msg interface{}) {
-	if h.bus == nil {
-		return
-	}
-	for _, ch := range c.Channels() {
-		h.bus.Publish(event.Type(fmt.Sprintf("ws:%s:receive", ch)), msg)
 	}
 }

@@ -18,16 +18,16 @@ func (suite *HubTestSuite) SetupSuite() {
 }
 
 func (suite *HubTestSuite) TestConstructor() {
-	h := NewHub(nil)
+	h := NewHub()
 	under := h.(*hub)
 	assert.NotNil(suite.T(), under.channels)
 	assert.NotNil(suite.T(), under.listeners)
 }
 
 func (suite *HubTestSuite) TestRegister() {
-	h := NewHub(nil)
+	h := NewHub()
 	under := h.(*hub)
-	f := factoryMock{}
+	f := FactoryMock{}
 	c := &ConnectionMock{}
 	c.On("ID").Return("conn1").Once()
 	c.On("ID").Return("conn2").Once()
@@ -61,7 +61,7 @@ func (suite *HubTestSuite) TestListeners() {
 	ch["test1"]["conn11"].(*ConnectionMock).On("Control").Return(c3).Once()
 	ch["test1"]["conn11"].(*ConnectionMock).On("Channels").Return([]string{"test1"})
 	ch["test1"]["conn11"].(*ConnectionMock).On("ID").Return("conn11")
-	h := NewHub(nil)
+	h := NewHub()
 	under := h.(*hub)
 	under.channels = ch
 	go under.readFrom(ch["test1"]["conn11"])
@@ -74,7 +74,7 @@ func (suite *HubTestSuite) TestListeners() {
 	time.Sleep(50 * time.Millisecond)
 	ch["test1"]["conn11"].(*ConnectionMock).AssertExpectations(suite.T())
 	ch["test1"]["conn11"].(*ConnectionMock).On("Out").Return(make(chan []byte)).Once()
-	ch["test1"]["conn11"].(*ConnectionMock).On("Close").Return().Once()
+	ch["test1"]["conn11"].(*ConnectionMock).On("CloseWithCode", 1000).Return()
 	c3 <- true
 	time.Sleep(50 * time.Millisecond)
 	l.AssertExpectations(suite.T())
@@ -90,7 +90,7 @@ func (suite *HubTestSuite) TestBroadcast() {
 			"conn21": &ConnectionMock{},
 		},
 	}
-	h := NewHub(nil)
+	h := NewHub()
 	under := h.(*hub)
 	under.channels = ch
 	c1 := make(chan []byte, 2)

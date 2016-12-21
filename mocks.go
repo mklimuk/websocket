@@ -52,6 +52,11 @@ func (c *RawConnectionMock) SetPongHandler(h func(appData string) error) {
 	c.Called(h)
 }
 
+//SetCloseHandler is a mocked method
+func (c *RawConnectionMock) SetCloseHandler(h func(code int, text string) error) {
+	c.Called(h)
+}
+
 //SetReadDeadline is a mocked method
 func (c *RawConnectionMock) SetReadDeadline(t time.Time) error {
 	args := c.Called(t)
@@ -107,6 +112,16 @@ func (c *ConnectionMock) Close() {
 	c.Called()
 }
 
+//CloseWithCode is a mocked method
+func (c *ConnectionMock) CloseWithCode(code int) {
+	c.Called(code)
+}
+
+//CloseWithReason is a mocked method
+func (c *ConnectionMock) CloseWithReason(code int, reason string) {
+	c.Called(code, reason)
+}
+
 //Control is a mocked method
 func (c *ConnectionMock) Control() chan bool {
 	args := c.Called()
@@ -148,12 +163,12 @@ func (m *ListenerMock) Handle(msg interface{}) {
 }
 
 //FactoryMock is a connection factory mock
-type factoryMock struct {
+type FactoryMock struct {
 	mock.Mock
 }
 
 //UpgradeConnection is a mocked method
-func (u *factoryMock) UpgradeConnection(writer http.ResponseWriter, req *http.Request, channels []string) (Connection, error) {
+func (u *FactoryMock) UpgradeConnection(writer http.ResponseWriter, req *http.Request, channels []string) (Connection, error) {
 	args := u.Called(writer, req, channels)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)

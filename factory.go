@@ -20,11 +20,13 @@ type gorillaFactory struct {
 	u ws.Upgrader
 }
 
+//NewFactory is the connection factory constructor
 func NewFactory() ConnectionFactory {
 	g := gorillaFactory{ws.Upgrader{}}
 	return &g
 }
 
+//UpgradeConnection upgrades HTTP connection to a websocket
 func (g *gorillaFactory) UpgradeConnection(writer http.ResponseWriter, req *http.Request, channels []string) (Connection, error) {
 	var err error
 	var w *ws.Conn

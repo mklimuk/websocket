@@ -21,7 +21,25 @@ const (
 	pingPeriod = 7 * time.Second
 
 	// Maximum message size allowed from peer.
-	maxMessageSize = 2048
+	maxMessageSize = 8192
+)
+
+//Websocket connection close causes
+const (
+	CloseNormalClosure           = 1000
+	CloseGoingAway               = 1001
+	CloseProtocolError           = 1002
+	CloseUnsupportedData         = 1003
+	CloseNoStatusReceived        = 1005
+	CloseAbnormalClosure         = 1006
+	CloseInvalidFramePayloadData = 1007
+	ClosePolicyViolation         = 1008
+	CloseMessageTooBig           = 1009
+	CloseMandatoryExtension      = 1010
+	CloseInternalServerErr       = 1011
+	CloseServiceRestart          = 1012
+	CloseTryAgainLater           = 1013
+	CloseTLSHandshake            = 1015
 )
 
 //Connection is a wrapper over raw websocket that exposes read and write channels
@@ -32,6 +50,8 @@ type Connection interface {
 	ReadMessage() (int, []byte, error)
 	WriteLoop(<-chan []byte)
 	Close()
+	CloseWithCode(code int)
+	CloseWithReason(code int, reason string)
 	Control() chan bool
 	In() (chan []byte, chan string)
 	Out() chan []byte
@@ -45,6 +65,7 @@ type rawWebsocket interface {
 	Close() error
 	SetReadLimit(limit int64)
 	SetReadDeadline(t time.Time) error
+	SetCloseHandler(h func(code int, text string) error)
 	SetPongHandler(h func(appData string) error)
 	SetPingHandler(h func(appData string) error)
 	WriteMessage(messageType int, data []byte) error
@@ -90,6 +111,7 @@ func newConnection(ws rawWebsocket, out chan []byte, host string, channels []str
 		maxMessageSize: maxMessageSize,
 	}
 	c.ws.SetPongHandler(c.pongHandler)
+	c.ws.SetCloseHandler(c.closeHandler)
 	return Connection(c)
 }
 
@@ -123,8 +145,17 @@ func (c *conn) Channels() []string {
 	return c.channels
 }
 
-//Close cleans up gracefully
+//Close is a shorthand for CloseWithReason with 'no status received' status
 func (c *conn) Close() {
+	c.CloseWithReason(CloseNoStatusReceived, "")
+}
+
+//CloseWith code is a shorthand for CloseWithReason where the reason string is not provided
+func (c *conn) CloseWithCode(code int) {
+	c.CloseWithReason(code, "")
+}
+
+func (c *conn) CloseWithReason(code int, reason string) {
 	// we make sure that Close doesn't get called twice as this might cause writing to a closed channel
 	c.shutdown.Lock()
 	defer c.shutdown.Unlock()
@@ -138,7 +169,7 @@ func (c *conn) Close() {
 	c.control <- true
 	var err error
 	// write the close message to the peer
-	if err = c.write(websocket.CloseMessage, []byte{}); err != nil {
+	if err = c.write(websocket.CloseMessage, websocket.FormatCloseMessage(code, reason)); err != nil {
 		log.WithFields(log.Fields{"logger": "ws.connection", "method": "close"}).
 			WithError(err).Warn("Error writing close message to the connection")
 	}
@@ -162,6 +193,7 @@ func (c *conn) ReadMessage() (int, []byte, error) {
 //ReadLoop dispatches messages from the websocket to the output channel.
 func (c *conn) ReadLoop() {
 	defer func() {
+		// in case something unexpected happens
 		c.Close()
 	}()
 	c.ws.SetReadLimit(maxMessageSize)
@@ -171,9 +203,17 @@ func (c *conn) ReadLoop() {
 	var err error
 	for {
 		if mt, message, err = c.ws.ReadMessage(); err != nil {
+			if websocket.IsCloseError(err, CloseGoingAway, CloseNormalClosure) {
+				if log.GetLevel() >= log.DebugLevel {
+					log.WithFields(log.Fields{"logger": "ws.connection", "method": "ReadLoop"}).
+						Debug("Regular websocket close message received; closing...")
+				}
+				c.CloseWithCode(CloseNormalClosure)
+				return
+			}
 			log.WithFields(log.Fields{"logger": "ws.connection", "method": "ReadLoop"}).
-				WithError(err).Error("Websocket read error encountered")
-			break
+				WithError(err).Error("Unexpected websocket error received")
+			return
 		}
 		switch mt {
 		case websocket.BinaryMessage:
@@ -249,7 +289,7 @@ func (c *conn) waitForPong() {
 	case <-time.After(c.pingTimeout):
 		log.WithFields(log.Fields{"logger": "ws.connection", "method": "waitForPong"}).
 			Info("Websocket connection timed out")
-		c.Close()
+		c.CloseWithCode(CloseNormalClosure)
 	case <-(*c).pong:
 		if log.GetLevel() >= log.DebugLevel {
 			log.WithFields(log.Fields{"logger": "ws.connection", "method": "waitForPong"}).
@@ -260,5 +300,10 @@ func (c *conn) waitForPong() {
 
 func (c *conn) pongHandler(appData string) error {
 	c.pong <- true
+	return nil
+}
+
+func (c *conn) closeHandler(code int, reason string) error {
+	c.Close()
 	return nil
 }

@@ -23,6 +23,7 @@ func (suite *ConnectionTestSuite) SetupSuite() {
 func (suite *ConnectionTestSuite) TestConstructor() {
 	ws := RawConnectionMock{}
 	ws.On("SetPongHandler", mock.Anything).Return()
+	ws.On("SetCloseHandler", mock.Anything).Return()
 	c := newConnection(&ws, make(chan []byte, 1), "localhost", []string{})
 	assert.NotNil(suite.T(), c.Out())
 	in, intxt := c.In()
@@ -37,8 +38,9 @@ func (suite *ConnectionTestSuite) TestClose() {
 	ws := RawConnectionMock{}
 	ws.On("SetPongHandler", mock.Anything).Return()
 	ws.On("Close").Return(nil).Once()
+	ws.On("SetCloseHandler", mock.Anything).Return()
 	ws.On("SetWriteDeadline", mock.AnythingOfType("time.Time")).Return(nil).Once()
-	ws.On("WriteMessage", websocket.CloseMessage, []byte{}).Return(nil)
+	ws.On("WriteMessage", websocket.CloseMessage, []byte{0x3, 0xed}).Return(nil)
 	c := newConnection(&ws, make(chan []byte, 1), "localhost", []string{})
 	c.Close()
 	c = newConnection(&ws, make(chan []byte, 1), "localhost", []string{})
@@ -55,6 +57,7 @@ func (suite *ConnectionTestSuite) TestClose() {
 func (suite *ConnectionTestSuite) TestWriteLoop() {
 	ws := RawConnectionMock{}
 	ws.On("SetPongHandler", mock.Anything).Return()
+	ws.On("SetCloseHandler", mock.Anything).Return()
 	c := newConnection(&ws, make(chan []byte, 1), "localhost", []string{})
 	go c.WriteLoop(c.Out())
 	msg := []byte{'a', 'b', 'c'}
@@ -63,7 +66,7 @@ func (suite *ConnectionTestSuite) TestWriteLoop() {
 	c.Out() <- []byte{'a', 'b', 'c'}
 	ws.On("SetWriteDeadline", mock.AnythingOfType("time.Time")).Return(nil).Twice()
 	ws.On("WriteMessage", websocket.TextMessage, msg).Return(errors.New("test error")).Once()
-	ws.On("WriteMessage", websocket.CloseMessage, []byte{}).Return(nil).Once()
+	ws.On("WriteMessage", websocket.CloseMessage, []byte{0x3, 0xed}).Return(nil).Once()
 	ws.On("Close").Return(nil).Once()
 	c.Out() <- []byte{'a', 'b', 'c'}
 	time.Sleep(100 * time.Millisecond)
@@ -73,9 +76,10 @@ func (suite *ConnectionTestSuite) TestWriteLoop() {
 func (suite *ConnectionTestSuite) TestWritePing() {
 	ws := RawConnectionMock{}
 	ws.On("SetPongHandler", mock.Anything).Return()
+	ws.On("SetCloseHandler", mock.Anything).Return()
 	ws.On("SetWriteDeadline", mock.AnythingOfType("time.Time")).Return(nil)
 	ws.On("WriteMessage", websocket.PingMessage, []byte{}).Return(nil).Once()
-	ws.On("WriteMessage", websocket.CloseMessage, []byte{}).Return(nil).Once()
+	ws.On("WriteMessage", websocket.CloseMessage, []byte{0x3, 0xe8}).Return(nil).Once()
 	ws.On("Close").Return(nil).Once()
 	c := newConnection(&ws, make(chan []byte, 1), "localhost", []string{})
 	c.(*conn).pingPeriod = 500 * time.Millisecond
@@ -89,15 +93,16 @@ func (suite *ConnectionTestSuite) TestWritePing() {
 func (suite *ConnectionTestSuite) TestReadLoop() {
 	ws := RawConnectionMock{}
 	ws.On("SetPongHandler", mock.Anything).Return()
+	ws.On("SetCloseHandler", mock.Anything).Return()
 	c := newConnection(&ws, make(chan []byte, 1), "localhost", []string{})
 	bin, txt := c.In()
 	msg := []byte{'t', 'e', 's', 't'}
-	ws.On("SetReadLimit", int64(2048)).Return()
+	ws.On("SetReadLimit", int64(8192)).Return()
 	ws.On("ReadMessage").Return(websocket.TextMessage, msg, nil).Once()
 	ws.On("ReadMessage").Return(websocket.BinaryMessage, msg, nil).Once()
 	ws.On("ReadMessage").Return(websocket.BinaryMessage, []byte{}, errors.New("read error")).Once()
 	ws.On("SetWriteDeadline", mock.AnythingOfType("time.Time")).Return(nil).Once()
-	ws.On("WriteMessage", websocket.CloseMessage, []byte{}).Return(nil).Once()
+	ws.On("WriteMessage", websocket.CloseMessage, []byte{0x3, 0xed}).Return(nil).Once()
 	ws.On("Close").Return(nil).Once()
 	go c.ReadLoop()
 	time.Sleep(100 * time.Millisecond)
