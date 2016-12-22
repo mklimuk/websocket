@@ -42,13 +42,37 @@ const (
 	CloseTLSHandshake            = 1015
 )
 
+// The message types are defined in RFC 6455, section 11.8.
+const (
+	// TextMessage denotes a text data message. The text message payload is
+	// interpreted as UTF-8 encoded text data.
+	TextMessage = 1
+
+	// BinaryMessage denotes a binary data message.
+	BinaryMessage = 2
+
+	// CloseMessage denotes a close control message. The optional message
+	// payload contains a numeric code and text. Use the FormatCloseMessage
+	// function to format a close message payload.
+	CloseMessage = 8
+
+	// PingMessage denotes a ping control message. The optional message payload
+	// is UTF-8 encoded text.
+	PingMessage = 9
+
+	// PongMessage denotes a ping control message. The optional message payload
+	// is UTF-8 encoded text.
+	PongMessage = 10
+)
+
 //Connection is a wrapper over raw websocket that exposes read and write channels
 //and defines read and write loops
 type Connection interface {
 	ID() string
 	ReadLoop()
-	ReadMessage() (int, []byte, error)
 	WriteLoop(<-chan []byte)
+	ReadMessage() (int, []byte, error)
+	WriteMessage(mt int, payload []byte) error
 	Close()
 	CloseWithCode(code int)
 	CloseWithReason(code int, reason string)
@@ -169,7 +193,7 @@ func (c *conn) CloseWithReason(code int, reason string) {
 	c.control <- true
 	var err error
 	// write the close message to the peer
-	if err = c.write(websocket.CloseMessage, websocket.FormatCloseMessage(code, reason)); err != nil {
+	if err = c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(code, reason)); err != nil {
 		log.WithFields(log.Fields{"logger": "ws.connection", "method": "close"}).
 			WithError(err).Warn("Error writing close message to the connection")
 	}
@@ -232,8 +256,8 @@ func (c *conn) ReadLoop() {
 	}
 }
 
-//write writes a message with the given message type and payload.
-func (c *conn) write(mt int, payload []byte) error {
+//WriteMessage writes a message with the given message type and payload.
+func (c *conn) WriteMessage(mt int, payload []byte) error {
 	var err error
 	if err = c.ws.SetWriteDeadline(time.Now().Add(writeTimeout)); err != nil {
 		return err
@@ -259,7 +283,7 @@ func (c *conn) WriteLoop(out <-chan []byte) {
 				}
 				return
 			}
-			if err := c.write(websocket.TextMessage, message); err != nil {
+			if err := c.WriteMessage(TextMessage, message); err != nil {
 				if log.GetLevel() >= log.InfoLevel {
 					log.WithFields(log.Fields{"logger": "ws.connection", "method": "WriteLoop", "message": message}).
 						WithError(err).Info("Error sending text message into the socket; aborting the write loop")
@@ -268,7 +292,7 @@ func (c *conn) WriteLoop(out <-chan []byte) {
 			}
 		case <-ticker.C:
 			log.Info("Writing ping")
-			if err := c.write(websocket.PingMessage, []byte{}); err != nil {
+			if err := c.WriteMessage(PingMessage, []byte{}); err != nil {
 				if log.GetLevel() >= log.InfoLevel {
 					log.WithFields(log.Fields{"logger": "ws.connection", "method": "WriteLoop"}).
 						WithError(err).Info("Error sending ping into the socket; aborting the write loop")

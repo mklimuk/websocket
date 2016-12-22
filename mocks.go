@@ -97,6 +97,12 @@ func (c *ConnectionMock) ReadMessage() (int, []byte, error) {
 	return args.Int(0), args.Get(1).([]byte), args.Error(2)
 }
 
+//WriteMessage is a mocked method
+func (c *ConnectionMock) WriteMessage(messageType int, data []byte) error {
+	args := c.Called(messageType, data)
+	return args.Error(0)
+}
+
 //ReadLoop is a mocked method
 func (c *ConnectionMock) ReadLoop() {
 	c.Called()
