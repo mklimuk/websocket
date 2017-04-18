@@ -24,7 +24,7 @@ const (
 //Hub is broadcasting into and reading from websockets
 type Hub interface {
 	Broadcast(msg []byte, channel string)
-	RegisterConnection(writer http.ResponseWriter, req *http.Request, channels []string, t ConnectionType) (string, error)
+	RegisterConnection(writer http.ResponseWriter, req *http.Request, channels []string, t ConnectionType) (Connection, error)
 	RegisterListener(channel string, l ConnListener)
 }
 
@@ -48,11 +48,11 @@ func NewHub() Hub {
 	return Hub(&h)
 }
 
-func (h *hub) RegisterConnection(writer http.ResponseWriter, req *http.Request, channels []string, t ConnectionType) (string, error) {
+func (h *hub) RegisterConnection(writer http.ResponseWriter, req *http.Request, channels []string, t ConnectionType) (Connection, error) {
 	var err error
 	var c Connection
 	if c, err = h.factory.UpgradeConnection(writer, req, channels); err != nil {
-		return "", err
+		return c, err
 	}
 	ID := c.ID()
 	if log.GetLevel() >= log.InfoLevel {
@@ -73,7 +73,7 @@ func (h *hub) RegisterConnection(writer http.ResponseWriter, req *http.Request, 
 		go c.ReadLoop()
 		go h.readFrom(c)
 	}
-	return ID, nil
+	return c, nil
 }
 
 func (h *hub) RegisterListener(ch string, l ConnListener) {

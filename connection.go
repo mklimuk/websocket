@@ -81,6 +81,7 @@ type Connection interface {
 	Out() chan []byte
 	Host() string
 	Channels() []string
+	OnClose(h func(code int, text string) error)
 }
 
 //rawWebsocket is an interface wrapper over *websocket.connection
@@ -263,6 +264,10 @@ func (c *conn) WriteMessage(mt int, payload []byte) error {
 		return err
 	}
 	return c.ws.WriteMessage(mt, payload)
+}
+
+func (c *conn) OnClose(h func(code int, text string) error) {
+	c.ws.SetCloseHandler(h)
 }
 
 //WriteLoop pumps messages from the output channel to the websocket connection.
