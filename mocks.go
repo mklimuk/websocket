@@ -198,9 +198,12 @@ func (h *HubMock) Broadcast(msg []byte, channel string) {
 }
 
 //RegisterConnection is a mocked method
-func (h *HubMock) RegisterConnection(writer http.ResponseWriter, req *http.Request, channels []string, t ConnectionType) (string, error) {
+func (h *HubMock) RegisterConnection(writer http.ResponseWriter, req *http.Request, channels []string, t ConnectionType) (Connection, error) {
 	args := h.Called(writer, req, channels, t)
-	return args.String(0), args.Error(1)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(Connection), args.Error(1)
 }
 
 //RegisterListener is a mocked method
