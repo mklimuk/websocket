@@ -111,8 +111,13 @@ func (h *hub) remove(c *Connection) {
 
 func (h *hub) callListeners(c *Connection, msg Message) {
 	if log.GetLevel() >= log.DebugLevel {
-		log.WithFields(log.Fields{"logger": "ws.hub.listen", "connection": c.ID, "msg": msg}).
-			Debug("Calling listeners associated with the connection")
+		if msg.MessageType == TextMessage {
+			log.WithFields(log.Fields{"logger": "ws.hub.listen", "connection": c.ID, "msg": string(msg.Payload)}).
+				Debug("Calling listeners associated with the connection")
+		} else {
+			log.WithFields(log.Fields{"logger": "ws.hub.listen", "connection": c.ID}).
+				Debug("Calling listeners associated with the connection")
+		}
 	}
 	for _, ch := range c.Channels {
 		for _, l := range h.listeners[ch] {
