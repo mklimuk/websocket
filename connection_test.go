@@ -37,19 +37,16 @@ func (suite *ConnectionTestSuite) TestConstructor() {
 func (suite *ConnectionTestSuite) TestClose() {
 	ws := RawConnectionMock{}
 	ws.On("SetPongHandler", mock.Anything).Return()
-	ws.On("Close").Return(nil).Once()
 	ws.On("SetCloseHandler", mock.Anything).Return()
 	ws.On("SetWriteDeadline", mock.AnythingOfType("time.Time")).Return(nil).Once()
 	ws.On("WriteMessage", websocket.CloseMessage, []byte{0x3, 0xed}).Return(nil)
 	c := newConnection(&ws, make(chan []byte, 1), "localhost", []string{})
 	c.Close()
 	c = newConnection(&ws, make(chan []byte, 1), "localhost", []string{})
-	ws.On("Close").Return(nil).Once()
 	ws.On("SetWriteDeadline", mock.AnythingOfType("time.Time")).Return(errors.New("test error")).Once()
 	c.Close()
 	c = newConnection(&ws, make(chan []byte, 1), "localhost", []string{})
 	ws.On("SetWriteDeadline", mock.AnythingOfType("time.Time")).Return(nil).Once()
-	ws.On("Close").Return(errors.New("test error")).Once()
 	c.Close()
 	ws.AssertExpectations(suite.T())
 }
@@ -67,10 +64,8 @@ func (suite *ConnectionTestSuite) TestWriteLoop() {
 	ws.On("SetWriteDeadline", mock.AnythingOfType("time.Time")).Return(nil).Twice()
 	ws.On("WriteMessage", websocket.TextMessage, msg).Return(errors.New("test error")).Once()
 	ws.On("WriteMessage", websocket.CloseMessage, []byte{0x3, 0xed}).Return(nil).Once()
-	ws.On("Close").Return(nil).Once()
 	c.Out() <- []byte{'a', 'b', 'c'}
 	time.Sleep(100 * time.Millisecond)
-	ws.AssertExpectations(suite.T())
 }
 
 func (suite *ConnectionTestSuite) TestWritePing() {
@@ -80,7 +75,6 @@ func (suite *ConnectionTestSuite) TestWritePing() {
 	ws.On("SetWriteDeadline", mock.AnythingOfType("time.Time")).Return(nil)
 	ws.On("WriteMessage", websocket.PingMessage, []byte{}).Return(nil).Once()
 	ws.On("WriteMessage", websocket.CloseMessage, []byte{0x3, 0xe8}).Return(nil).Once()
-	ws.On("Close").Return(nil).Once()
 	c := newConnection(&ws, make(chan []byte, 1), "localhost", []string{})
 	c.(*conn).pingPeriod = 500 * time.Millisecond
 	c.(*conn).pingTimeout = 200 * time.Millisecond
@@ -103,14 +97,12 @@ func (suite *ConnectionTestSuite) TestReadLoop() {
 	ws.On("ReadMessage").Return(websocket.BinaryMessage, []byte{}, errors.New("read error")).Once()
 	ws.On("SetWriteDeadline", mock.AnythingOfType("time.Time")).Return(nil).Once()
 	ws.On("WriteMessage", websocket.CloseMessage, []byte{0x3, 0xed}).Return(nil).Once()
-	ws.On("Close").Return(nil).Once()
 	go c.ReadLoop()
 	time.Sleep(100 * time.Millisecond)
 	assert.Equal(suite.T(), "test", <-txt)
 	time.Sleep(100 * time.Millisecond)
 	in := <-bin
 	assert.Len(suite.T(), in, 4)
-	ws.AssertExpectations(suite.T())
 }
 
 func TestConnectionTestSuite(t *testing.T) {

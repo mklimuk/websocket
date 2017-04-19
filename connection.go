@@ -198,11 +198,6 @@ func (c *conn) CloseWithReason(code int, reason string) {
 		log.WithFields(log.Fields{"logger": "ws.connection", "method": "close"}).
 			WithError(err).Warn("Error writing close message to the connection")
 	}
-	// close the websocket
-	if err = c.ws.Close(); err != nil {
-		log.WithFields(log.Fields{"logger": "ws.connection", "method": "close"}).
-			WithError(err).Warn("Error closing websocket connection")
-	}
 	// close channels
 	close(c.in)
 	close(c.intxt)
