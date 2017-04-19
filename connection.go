@@ -197,7 +197,7 @@ func (c *Connection) CloseWithReason(code int, reason string) {
 			if the connection is open we initialize the close handshake, stop the write loop
 			and set the connection state to 'closing'
 		*/
-		log.WithFields(log.Fields{"logger": "ws.connection.close", "id": c.ID, "remote": c.Remote}).
+		log.WithFields(log.Fields{"logger": "ws.connection.close", "conn": c.ID, "remote": c.Remote}).
 			Info("Initializing close handshake")
 		c.control <- true
 		close(c.control)
@@ -211,7 +211,7 @@ func (c *Connection) CloseWithReason(code int, reason string) {
 			If the connection is closing, we stop the read loop and remaining channels and
 			we set connection state to 'closed'
 		*/
-		log.WithFields(log.Fields{"logger": "ws.connection.close", "id": c.ID, "remote": c.Remote}).
+		log.WithFields(log.Fields{"logger": "ws.connection.close", "conn": c.ID, "remote": c.Remote}).
 			Info("Closing read channels")
 		close(c.In)
 		close(c.Out)
@@ -254,7 +254,7 @@ func (c *Connection) ReadLoop() {
 			return
 		}
 		if log.GetLevel() >= log.DebugLevel {
-			log.WithFields(log.Fields{"logger": "ws.connection.read", "id": c.ID, "remote": c.Remote}).
+			log.WithFields(log.Fields{"logger": "ws.connection.read", "conn": c.ID, "remote": c.Remote}).
 				Debug("Message received")
 		}
 		c.In <- Message{MessageType: mt, Payload: msg}
@@ -282,21 +282,21 @@ func (c *Connection) WriteLoop() {
 		select {
 		case msg, ok := <-c.Out:
 			if !ok {
-				log.WithFields(log.Fields{"logger": "ws.connection.write", "message": msg}).
+				log.WithFields(log.Fields{"logger": "ws.connection.write", "conn": c.ID, "message": msg}).
 					Warn("Output channel is closed")
 				continue
 			}
 			if err := c.WriteMessage(msg.MessageType, msg.Payload); err != nil {
-				log.WithFields(log.Fields{"logger": "ws.connection.write", "message": msg}).
+				log.WithFields(log.Fields{"logger": "ws.connection.write", "conn": c.ID, "message": msg}).
 					WithError(err).Info("Error sending text message into the websocket")
 				c.CloseWithReason(CloseAbnormalClosure, "Error sending text message into the websocket")
 				return
 			}
 		case <-ticker.C:
-			log.Info("Writing ping")
+			log.WithFields(log.Fields{"logger": "ws.connection.write", "conn": c.ID}).Info("Writing ping")
 			if err := c.WriteMessage(PingMessage, []byte{}); err != nil {
 				if log.GetLevel() >= log.InfoLevel {
-					log.WithFields(log.Fields{"logger": "ws.connection.write"}).
+					log.WithFields(log.Fields{"logger": "ws.connection.write", "conn": c.ID}).
 						WithError(err).Info("Error sending ping into the socket; aborting the write loop")
 				}
 				return
@@ -310,14 +310,14 @@ func (c *Connection) WriteLoop() {
 }
 
 func (c *Connection) waitForPong() {
-	log.WithFields(log.Fields{"logger": "ws.connection.pong"}).Debug("Setting pong timer")
+	log.WithFields(log.Fields{"logger": "ws.connection.pong", "conn": c.ID}).Debug("Setting pong timer")
 	select {
 	case <-time.After(c.PingTimeout):
-		log.WithFields(log.Fields{"logger": "ws.connection.pong"}).Debug("Ping timed out, closing connection")
+		log.WithFields(log.Fields{"logger": "ws.connection.pong", "conn": c.ID}).Debug("Ping timed out, closing connection")
 		c.CloseWithCode(CloseNormalClosure)
 	case <-(*c).pong:
 		if log.GetLevel() >= log.DebugLevel {
-			log.WithFields(log.Fields{"logger": "ws.connection.pong"}).Debug("Pong timeout cancelled")
+			log.WithFields(log.Fields{"logger": "ws.connection.pong", "conn": c.ID}).Debug("Pong timeout cancelled")
 		}
 	}
 }
