@@ -116,7 +116,7 @@ type HubMock struct {
 }
 
 //Broadcast is a mocked method
-func (h *HubMock) Broadcast(msg []byte, channel string) {
+func (h *HubMock) Broadcast(msg Message, channel string) {
 	h.Called(msg, channel)
 }
 
