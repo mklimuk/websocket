@@ -32,7 +32,7 @@ func EncodeMessage(title string, payload interface{}) []byte {
 	)
 	if b, err = json.Marshal(payload); err != nil {
 		log.WithFields(log.Fields{"logger": "ws.message"}).
-			WithError(err).Fatal("Could not marshal content to json")
+			WithError(err).Error("Could not marshal content to json")
 		return nil
 	}
 	msg := &TypedJSONMessage{
@@ -41,7 +41,7 @@ func EncodeMessage(title string, payload interface{}) []byte {
 	}
 	if b, err = json.Marshal(msg); err != nil {
 		log.WithFields(log.Fields{"logger": "ws.message"}).
-			WithError(err).Fatal("Could not produce json message")
+			WithError(err).Error("Could not produce json message")
 	}
 	return b
 }

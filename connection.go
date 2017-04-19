@@ -237,10 +237,9 @@ func (c *Connection) ReadLoop() {
 	for {
 		if mt, msg, err = c.ws.ReadMessage(); err != nil {
 			if e, ok := err.(*websocket.CloseError); ok {
-				if log.GetLevel() >= log.DebugLevel {
-					log.WithFields(log.Fields{"logger": "ws.connection.read"}).
-						Debug("Websocket close message received")
-				}
+				log.WithFields(log.Fields{"logger": "ws.connection.read"}).
+					Info("Websocket close message received")
+
 				if websocket.IsUnexpectedCloseError(err, CloseGoingAway, CloseNormalClosure, CloseNoStatusReceived) {
 					log.WithFields(log.Fields{"logger": "ws.connection.read"}).
 						WithError(err).Error("Unexpected close message code received")
@@ -286,19 +285,22 @@ func (c *Connection) WriteLoop() {
 					Warn("Output channel is closed")
 				continue
 			}
+			if log.GetLevel() >= log.DebugLevel {
+				log.WithFields(log.Fields{"logger": "ws.connection.write", "remote": c.Remote, "conn": c.ID}).
+					Debug("Sending message into websocket")
+			}
 			if err := c.WriteMessage(msg.MessageType, msg.Payload); err != nil {
 				log.WithFields(log.Fields{"logger": "ws.connection.write", "conn": c.ID, "message": msg}).
-					WithError(err).Info("Error sending text message into the websocket")
+					WithError(err).Error("Error sending text message into the websocket")
 				c.CloseWithReason(CloseAbnormalClosure, "Error sending text message into the websocket")
 				return
 			}
 		case <-ticker.C:
-			log.WithFields(log.Fields{"logger": "ws.connection.write", "conn": c.ID}).Info("Writing ping")
+			log.WithFields(log.Fields{"logger": "ws.connection.write", "conn": c.ID}).Debug("Writing ping")
 			if err := c.WriteMessage(PingMessage, []byte{}); err != nil {
-				if log.GetLevel() >= log.InfoLevel {
-					log.WithFields(log.Fields{"logger": "ws.connection.write", "conn": c.ID}).
-						WithError(err).Info("Error sending ping into the socket; aborting the write loop")
-				}
+				log.WithFields(log.Fields{"logger": "ws.connection.write", "conn": c.ID}).
+					WithError(err).Error("Error sending ping into the socket")
+				c.CloseWithReason(CloseAbnormalClosure, "Error sending ping into the socket")
 				return
 			}
 			go c.waitForPong()
