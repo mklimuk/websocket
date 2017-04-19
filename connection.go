@@ -236,12 +236,15 @@ func (c *Connection) ReadLoop() {
 	)
 	for {
 		if mt, msg, err = c.ws.ReadMessage(); err != nil {
-			if websocket.IsCloseError(err, CloseGoingAway, CloseNormalClosure) {
+			if e, ok := err.(*websocket.CloseError); ok {
 				if log.GetLevel() >= log.DebugLevel {
 					log.WithFields(log.Fields{"logger": "ws.connection.read"}).
-						Debug("Close message received; closing...")
+						Debug("Websocket close message received")
 				}
-				e := err.(*websocket.CloseError)
+				if websocket.IsUnexpectedCloseError(err, CloseGoingAway, CloseNormalClosure, CloseNoStatusReceived) {
+					log.WithFields(log.Fields{"logger": "ws.connection.read"}).
+						WithError(err).Error("Unexpected close message code received")
+				}
 				c.handleCloseMessage(e.Code, e.Text)
 				return
 			}
