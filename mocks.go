@@ -86,8 +86,14 @@ type ListenerMock struct {
 }
 
 //Handle is a mocked method
-func (m *ListenerMock) Handle(msg interface{}) {
+func (m *ListenerMock) Handle(msg []byte) {
 	m.Called(msg)
+}
+
+//Supports is a mocked method
+func (m *ListenerMock) Supports(t int) bool {
+	args := m.Called(t)
+	return args.Bool(0)
 }
 
 //FactoryMock is a connection factory mock

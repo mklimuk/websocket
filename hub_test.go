@@ -71,8 +71,9 @@ func (suite *HubTestSuite) TestListeners() {
 	go under.listen(ch["test1"]["conn11"])
 	// testing listeners
 	l := ListenerMock{}
-	msg := []byte{'t', 'e', 's', 't'}
-	l.On("Handle", msg).Return().Once()
+	msg := Message{MessageType: BinaryMessage, Payload: []byte{'t', 'e', 's', 't'}}
+	l.On("Supports", BinaryMessage).Return(true).Once()
+	l.On("Handle", msg.Payload).Return().Once()
 	h.RegisterListener("test1", &l)
 	c1.In <- msg
 	time.Sleep(50 * time.Millisecond)

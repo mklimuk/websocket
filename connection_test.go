@@ -27,7 +27,6 @@ func (suite *ConnectionTestSuite) TestConstructor() {
 	c := newConnection(&ws, "remote", []string{})
 	a.NotNil(c.Out)
 	a.NotNil(c.In)
-	a.NotNil(c.Intxt)
 	a.NotNil(c.control)
 	a.NotEmpty(c.ID)
 	a.Equal("remote", c.Remote)
@@ -105,10 +104,8 @@ func (suite *ConnectionTestSuite) TestReadLoop() {
 	go c.ReadLoop()
 	a := assert.New(suite.T())
 	time.Sleep(100 * time.Millisecond)
-	a.Equal("test", <-c.Intxt)
-	time.Sleep(100 * time.Millisecond)
 	in := <-c.In
-	assert.Len(suite.T(), in, 4)
+	a.Len(in.Payload, 4)
 }
 
 func TestConnectionTestSuite(t *testing.T) {

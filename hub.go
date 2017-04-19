@@ -20,7 +20,8 @@ type Hub interface {
 
 //ConnListener is a Connection listener interface
 type ConnListener interface {
-	Handle(msg interface{})
+	Handle(msg []byte)
+	Supports(messageType int) bool
 }
 
 //hub maintains a list of active channels with associated websocket connections
@@ -87,17 +88,10 @@ func (h *hub) listen(c *Connection) {
 	defer h.remove(c)
 	for {
 		select {
-		case msg, ok := <-c.Intxt:
-			if !ok {
-				log.WithFields(log.Fields{"logger": "ws.hub.listen", "connection": c.ID}).
-					Info("Text input channel is closed; aborting read loop")
-				return
-			}
-			h.callListeners(c, msg)
 		case msg, ok := <-c.In:
 			if !ok {
 				log.WithFields(log.Fields{"logger": "ws.hub.listen", "Connection": c.ID}).
-					Info("Binary input channel is closed; aborting read loop")
+					Info("Input channel is closed; aborting read loop")
 				return
 			}
 			h.callListeners(c, msg)
@@ -115,14 +109,16 @@ func (h *hub) remove(c *Connection) {
 	}
 }
 
-func (h *hub) callListeners(c *Connection, msg interface{}) {
+func (h *hub) callListeners(c *Connection, msg Message) {
 	if log.GetLevel() >= log.DebugLevel {
 		log.WithFields(log.Fields{"logger": "ws.hub.listen", "connection": c.ID, "msg": msg}).
 			Debug("Calling listeners associated with the connection")
 	}
 	for _, ch := range c.Channels {
 		for _, l := range h.listeners[ch] {
-			l.Handle(msg)
+			if l.Supports(msg.MessageType) {
+				l.Handle(msg.Payload)
+			}
 		}
 	}
 }

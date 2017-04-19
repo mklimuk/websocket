@@ -108,8 +108,7 @@ type Connection struct {
 	ws             rawWebsocket
 	control        chan bool
 	pong           chan bool
-	In             chan []byte
-	Intxt          chan string
+	In             chan Message
 	Out            chan Message
 	shutdown       sync.Mutex
 	state          int8
@@ -128,8 +127,7 @@ func newConnection(ws rawWebsocket, remote string, channels []string) *Connectio
 		ID:             uuid.NewV4().String(),
 		ws:             ws,
 		control:        make(chan bool, 1),
-		In:             make(chan []byte, 2048),
-		Intxt:          make(chan string, 1),
+		In:             make(chan Message, 2048),
 		Out:            make(chan Message, 16),
 		pong:           make(chan bool, 1),
 		shutdown:       sync.Mutex{},
@@ -209,7 +207,6 @@ func (c *Connection) CloseWithReason(code int, reason string) {
 		log.WithFields(log.Fields{"logger": "ws.connection.close", "id": c.ID, "remote": c.Remote}).
 			Info("Closing read channels")
 		close(c.In)
-		close(c.Intxt)
 		close(c.Out)
 		close(c.pong)
 		c.state = StateClosed
@@ -226,12 +223,12 @@ func (c *Connection) ReadLoop() {
 	c.ws.SetReadLimit(c.MaxMessageSize)
 
 	var (
-		mt      int
-		message []byte
-		err     error
+		mt  int
+		msg []byte
+		err error
 	)
 	for {
-		if mt, message, err = c.ws.ReadMessage(); err != nil {
+		if mt, msg, err = c.ws.ReadMessage(); err != nil {
 			if websocket.IsCloseError(err, CloseGoingAway, CloseNormalClosure) {
 				if log.GetLevel() >= log.DebugLevel {
 					log.WithFields(log.Fields{"logger": "ws.connection.read"}).
@@ -246,20 +243,11 @@ func (c *Connection) ReadLoop() {
 			c.CloseWithReason(CloseAbnormalClosure, "Unexpected websocket error received")
 			return
 		}
-		switch mt {
-		case websocket.BinaryMessage:
-			if log.GetLevel() >= log.DebugLevel {
-				log.WithFields(log.Fields{"logger": "ws.connection.read", "id": c.ID, "remote": c.Remote}).
-					Debug("Binary message received")
-			}
-			c.In <- message
-		case websocket.TextMessage:
-			if log.GetLevel() >= log.DebugLevel {
-				log.WithFields(log.Fields{"logger": "ws.connection.read", "id": c.ID, "remote": c.Remote, "message": string(message)}).
-					Debug("Text message received")
-			}
-			c.Intxt <- string(message)
+		if log.GetLevel() >= log.DebugLevel {
+			log.WithFields(log.Fields{"logger": "ws.connection.read", "id": c.ID, "remote": c.Remote}).
+				Debug("Message received")
 		}
+		c.In <- Message{MessageType: mt, Payload: msg}
 	}
 }
 
