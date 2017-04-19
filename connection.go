@@ -121,6 +121,11 @@ type Connection struct {
 	MaxMessageSize int64
 }
 
+//WrapConnection wraps gorilla websocket into a Connection
+func WrapConnection(ws rawWebsocket, remote string) *Connection {
+	return newConnection(ws, remote, nil)
+}
+
 //newConnection is the connection constructor
 func newConnection(ws rawWebsocket, remote string, channels []string) *Connection {
 	c := &Connection{
