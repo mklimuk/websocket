@@ -23,62 +23,66 @@ func (suite *ConnectionTestSuite) SetupSuite() {
 func (suite *ConnectionTestSuite) TestConstructor() {
 	ws := RawConnectionMock{}
 	ws.On("SetPongHandler", mock.Anything).Return()
-	ws.On("SetCloseHandler", mock.Anything).Return()
-	c := newConnection(&ws, make(chan []byte, 1), "localhost", []string{})
-	assert.NotNil(suite.T(), c.Out())
-	in, intxt := c.In()
-	assert.NotNil(suite.T(), in)
-	assert.NotNil(suite.T(), intxt)
-	assert.NotNil(suite.T(), c.Control())
-	assert.NotEmpty(suite.T(), c.ID())
-	assert.Equal(suite.T(), "localhost", c.Host())
+	a := assert.New(suite.T())
+	c := newConnection(&ws, "remote", []string{})
+	a.NotNil(c.Out)
+	a.NotNil(c.In)
+	a.NotNil(c.Intxt)
+	a.NotNil(c.control)
+	a.NotEmpty(c.ID)
+	a.Equal("remote", c.Remote)
 }
 
 func (suite *ConnectionTestSuite) TestClose() {
 	ws := RawConnectionMock{}
 	ws.On("SetPongHandler", mock.Anything).Return()
-	ws.On("SetCloseHandler", mock.Anything).Return()
 	ws.On("SetWriteDeadline", mock.AnythingOfType("time.Time")).Return(nil).Once()
 	ws.On("WriteMessage", websocket.CloseMessage, []byte{0x3, 0xed}).Return(nil)
-	c := newConnection(&ws, make(chan []byte, 1), "localhost", []string{})
+	ws.On("Close").Return(nil)
+	c := newConnection(&ws, "localhost", []string{})
 	c.Close()
-	c = newConnection(&ws, make(chan []byte, 1), "localhost", []string{})
+	a := assert.New(suite.T())
+	a.Equal(c.state, StateClosing)
+	c.handleCloseMessage(CloseNoStatusReceived, "")
+	a.Equal(c.state, StateClosed)
+	c = newConnection(&ws, "localhost", []string{})
 	ws.On("SetWriteDeadline", mock.AnythingOfType("time.Time")).Return(errors.New("test error")).Once()
 	c.Close()
-	c = newConnection(&ws, make(chan []byte, 1), "localhost", []string{})
-	ws.On("SetWriteDeadline", mock.AnythingOfType("time.Time")).Return(nil).Once()
+	a.Equal(c.state, StateClosing)
 	c.Close()
+	a.Equal(c.state, StateClosed)
 	ws.AssertExpectations(suite.T())
 }
 
 func (suite *ConnectionTestSuite) TestWriteLoop() {
 	ws := RawConnectionMock{}
 	ws.On("SetPongHandler", mock.Anything).Return()
-	ws.On("SetCloseHandler", mock.Anything).Return()
-	c := newConnection(&ws, make(chan []byte, 1), "localhost", []string{})
-	go c.WriteLoop(c.Out())
+	c := newConnection(&ws, "localhost", []string{})
+	go c.WriteLoop()
 	msg := []byte{'a', 'b', 'c'}
 	ws.On("SetWriteDeadline", mock.AnythingOfType("time.Time")).Return(nil).Once()
 	ws.On("WriteMessage", websocket.TextMessage, msg).Return(nil).Once()
-	c.Out() <- []byte{'a', 'b', 'c'}
+	c.Out <- Message{MessageType: TextMessage, Payload: msg}
 	ws.On("SetWriteDeadline", mock.AnythingOfType("time.Time")).Return(nil).Twice()
-	ws.On("WriteMessage", websocket.TextMessage, msg).Return(errors.New("test error")).Once()
-	ws.On("WriteMessage", websocket.CloseMessage, []byte{0x3, 0xed}).Return(nil).Once()
-	c.Out() <- []byte{'a', 'b', 'c'}
+	ws.On("WriteMessage", websocket.BinaryMessage, msg).Return(errors.New("test error")).Once()
+	res := []byte{0x3, 0xee}
+	e := "Error sending text message into the websocket"
+	res = append(res, []byte(e)...)
+	ws.On("WriteMessage", websocket.CloseMessage, res).Return(nil).Once()
+	c.Out <- Message{MessageType: BinaryMessage, Payload: []byte{'a', 'b', 'c'}}
 	time.Sleep(100 * time.Millisecond)
 }
 
 func (suite *ConnectionTestSuite) TestWritePing() {
 	ws := RawConnectionMock{}
 	ws.On("SetPongHandler", mock.Anything).Return()
-	ws.On("SetCloseHandler", mock.Anything).Return()
 	ws.On("SetWriteDeadline", mock.AnythingOfType("time.Time")).Return(nil)
 	ws.On("WriteMessage", websocket.PingMessage, []byte{}).Return(nil).Once()
 	ws.On("WriteMessage", websocket.CloseMessage, []byte{0x3, 0xe8}).Return(nil).Once()
-	c := newConnection(&ws, make(chan []byte, 1), "localhost", []string{})
-	c.(*conn).pingPeriod = 500 * time.Millisecond
-	c.(*conn).pingTimeout = 200 * time.Millisecond
-	go c.WriteLoop(c.Out())
+	c := newConnection(&ws, "localhost", []string{})
+	c.PingPeriod = 500 * time.Millisecond
+	c.PingTimeout = 200 * time.Millisecond
+	go c.WriteLoop()
 	time.Sleep(800 * time.Millisecond)
 	//the connection should timeout and close
 	ws.AssertExpectations(suite.T())
@@ -87,21 +91,23 @@ func (suite *ConnectionTestSuite) TestWritePing() {
 func (suite *ConnectionTestSuite) TestReadLoop() {
 	ws := RawConnectionMock{}
 	ws.On("SetPongHandler", mock.Anything).Return()
-	ws.On("SetCloseHandler", mock.Anything).Return()
-	c := newConnection(&ws, make(chan []byte, 1), "localhost", []string{})
-	bin, txt := c.In()
+	c := newConnection(&ws, "localhost", []string{})
 	msg := []byte{'t', 'e', 's', 't'}
 	ws.On("SetReadLimit", int64(8192)).Return()
 	ws.On("ReadMessage").Return(websocket.TextMessage, msg, nil).Once()
 	ws.On("ReadMessage").Return(websocket.BinaryMessage, msg, nil).Once()
 	ws.On("ReadMessage").Return(websocket.BinaryMessage, []byte{}, errors.New("read error")).Once()
 	ws.On("SetWriteDeadline", mock.AnythingOfType("time.Time")).Return(nil).Once()
-	ws.On("WriteMessage", websocket.CloseMessage, []byte{0x3, 0xed}).Return(nil).Once()
+	res := []byte{0x3, 0xee}
+	e := "Unexpected websocket error received"
+	res = append(res, []byte(e)...)
+	ws.On("WriteMessage", websocket.CloseMessage, res).Return(nil).Once()
 	go c.ReadLoop()
+	a := assert.New(suite.T())
 	time.Sleep(100 * time.Millisecond)
-	assert.Equal(suite.T(), "test", <-txt)
+	a.Equal("test", <-c.Intxt)
 	time.Sleep(100 * time.Millisecond)
-	in := <-bin
+	in := <-c.In
 	assert.Len(suite.T(), in, 4)
 }
 

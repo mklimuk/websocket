@@ -65,30 +65,29 @@ const (
 	PongMessage = 10
 )
 
-//Indicates who initialized connection close
+/*
+Message is used to pass binary and text messages to the connection through a common channel
+*/
+type Message struct {
+	MessageType int
+	Payload     []byte
+}
+
+//DisconnectOrigin indicates who initialized connection close
+type DisconnectOrigin bool
+
+//origin values
 const (
-	Self = false
-	Peer = true
+	Self DisconnectOrigin = false
+	Peer DisconnectOrigin = true
 )
 
-//Connection is a wrapper over raw websocket that exposes read and write channels
-//and defines read and write loops
-type Connection interface {
-	ID() string
-	ReadLoop()
-	WriteLoop(<-chan []byte)
-	ReadMessage() (int, []byte, error)
-	WriteMessage(mt int, payload []byte) error
-	Close()
-	CloseWithCode(code int)
-	CloseWithReason(code int, reason string)
-	Control() chan bool
-	In() (chan []byte, chan string)
-	Out() chan []byte
-	Host() string
-	Channels() []string
-	OnClose(h func(code int, text string, origin bool) error)
-}
+//connection state
+const (
+	StateClosed int8 = iota
+	StateOpen
+	StateClosing
+)
 
 //rawWebsocket is an interface wrapper over *websocket.connection
 type rawWebsocket interface {
@@ -103,168 +102,169 @@ type rawWebsocket interface {
 	ReadMessage() (messageType int, p []byte, err error)
 }
 
-//conn represents a single client websocket connection
-type conn struct {
-	cid            string
+//Connection represents a single client websocket connection
+type Connection struct {
+	ID             string
 	ws             rawWebsocket
 	control        chan bool
 	pong           chan bool
-	in             chan []byte
-	intxt          chan string
-	out            chan []byte
+	In             chan []byte
+	Intxt          chan string
+	Out            chan Message
 	shutdown       sync.Mutex
-	closed         bool
-	ch             func(code int, text string, who bool) error //close handler
-	host           string
-	channels       []string
-	writeTimeout   time.Duration
-	pingTimeout    time.Duration
-	pingPeriod     time.Duration
-	maxMessageSize int
+	state          int8
+	OnClose        func(code int, text string, origin DisconnectOrigin) error //close handler
+	Remote         string
+	Channels       []string
+	WriteTimeout   time.Duration
+	PingTimeout    time.Duration
+	PingPeriod     time.Duration
+	MaxMessageSize int64
 }
 
 //newConnection is the connection constructor
-func newConnection(ws rawWebsocket, out chan []byte, host string, channels []string) Connection {
-	c := &conn{
-		cid:            uuid.NewV4().String(),
+func newConnection(ws rawWebsocket, remote string, channels []string) *Connection {
+	c := &Connection{
+		ID:             uuid.NewV4().String(),
 		ws:             ws,
 		control:        make(chan bool, 1),
+		In:             make(chan []byte, 2048),
+		Intxt:          make(chan string, 1),
+		Out:            make(chan Message, 16),
 		pong:           make(chan bool, 1),
-		in:             make(chan []byte, 2048),
-		intxt:          make(chan string, 1),
-		out:            out,
 		shutdown:       sync.Mutex{},
-		closed:         false,
-		host:           host,
-		channels:       channels,
-		writeTimeout:   writeTimeout,
-		pingTimeout:    pingTimeout,
-		pingPeriod:     pingPeriod,
-		maxMessageSize: maxMessageSize,
+		state:          StateOpen,
+		Remote:         remote,
+		Channels:       channels,
+		WriteTimeout:   writeTimeout,
+		PingTimeout:    pingTimeout,
+		PingPeriod:     pingPeriod,
+		MaxMessageSize: maxMessageSize,
 	}
-	c.ws.SetPongHandler(c.pongHandler)
-	c.ws.SetCloseHandler(c.closeHandler)
-	return Connection(c)
-}
-
-//ID returns connection's ID
-func (c *conn) ID() string {
-	return c.cid
-}
-
-//Control returns connection's control channel
-func (c *conn) Control() chan bool {
-	return c.control
-}
-
-//Out returns connection's output channel
-func (c *conn) Out() chan []byte {
-	return c.out
-}
-
-//In returns connection's input channels
-func (c *conn) In() (chan []byte, chan string) {
-	return c.in, c.intxt
-}
-
-//Host returns connection's peer hostname
-func (c *conn) Host() string {
-	return c.host
-}
-
-//Channels returns channels this connection is attached to
-func (c *conn) Channels() []string {
-	return c.channels
+	ws.SetPongHandler(c.pongHandler)
+	return c
 }
 
 //Close is a shorthand for CloseWithReason with 'no status received' status
-func (c *conn) Close() {
+func (c *Connection) Close() {
 	c.CloseWithReason(CloseNoStatusReceived, "")
 }
 
-//CloseWith code is a shorthand for CloseWithReason where the reason string is not provided
-func (c *conn) CloseWithCode(code int) {
+//CloseWithCode code is a shorthand for CloseWithReason where the reason string is not provided
+func (c *Connection) CloseWithCode(code int) {
 	c.CloseWithReason(code, "")
 }
 
-func (c *conn) CloseWithReason(code int, reason string) {
-	// we make sure that Close doesn't get called twice as this might cause writing to a closed channel
-	c.shutdown.Lock()
-	defer c.shutdown.Unlock()
-	//if the connection is already closed there is nothing left to do
-	if c.closed {
-		return
+func (c *Connection) handleCloseMessage(code int, reason string) {
+	// if we initialized close handshake we are responsible for closing the net connection
+	if c.state == StateClosing {
+		c.ws.Close()
+		//we run the close listener if specified
+		if c.OnClose != nil {
+			defer c.OnClose(code, reason, Self)
+		}
+	} else {
+		/*
+			If the peer initialized the handshake, close message response is sent
+			by the onClose handler and the peer will close the network connection.
+			We should only stop processing messages.
+		*/
+		c.state = StateClosing
+		if c.OnClose != nil {
+			defer c.OnClose(code, reason, Peer)
+		}
 	}
-	//we run the close listener if specified
-	if c.ch != nil {
-		defer c.ch(code, reason, Self)
-	}
-	log.WithFields(log.Fields{"logger": "ws.connection", "method": "Close", "host": c.host}).
-		Info("Closing connection")
-	// notify the outside world that the connection is closing
-	c.control <- true
-	var err error
-	// write the close message to the peer
-	if err = c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(code, reason)); err != nil {
-		log.WithFields(log.Fields{"logger": "ws.connection", "method": "close"}).
-			WithError(err).Warn("Error writing close message to the connection")
-	}
-	// close channels
-	close(c.in)
-	close(c.intxt)
-	close(c.pong)
-	close(c.control)
-	c.closed = true
+	c.CloseWithReason(code, reason)
 }
 
-func (c *conn) ReadMessage() (int, []byte, error) {
+//CloseWithReason initializes ws close handshake with a given close code and reason
+func (c *Connection) CloseWithReason(code int, reason string) {
+	// we make sure that Close doesn't get called twice
+	c.shutdown.Lock()
+	defer c.shutdown.Unlock()
+
+	switch c.state {
+	case StateClosed:
+		//if the connection is already closed there is nothing left to do
+		return
+	case StateOpen:
+		/*
+			if the connection is open we initialize the close handshake, stop the write loop
+			and set the connection state to 'closing'
+		*/
+		log.WithFields(log.Fields{"logger": "ws.connection.close", "id": c.ID, "remote": c.Remote}).
+			Info("Initializing close handshake")
+		c.control <- true
+		close(c.control)
+		if err := c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(code, reason)); err != nil {
+			log.WithFields(log.Fields{"logger": "ws.connection", "method": "close"}).
+				WithError(err).Warn("Error writing close message to the connection")
+		}
+		c.state = StateClosing
+	case StateClosing:
+		/*
+			If the connection is closing, we stop the read loop and remaining channels and
+			we set connection state to 'closed'
+		*/
+		log.WithFields(log.Fields{"logger": "ws.connection.close", "id": c.ID, "remote": c.Remote}).
+			Info("Closing read channels")
+		close(c.In)
+		close(c.Intxt)
+		close(c.Out)
+		close(c.pong)
+		c.state = StateClosed
+	}
+}
+
+//ReadMessage is a proxy to underlying gorilla websocket read
+func (c *Connection) ReadMessage() (int, []byte, error) {
 	return c.ws.ReadMessage()
 }
 
 //ReadLoop dispatches messages from the websocket to the output channel.
-func (c *conn) ReadLoop() {
-	defer func() {
-		// in case something unexpected happens
-		c.Close()
-	}()
-	c.ws.SetReadLimit(maxMessageSize)
+func (c *Connection) ReadLoop() {
+	c.ws.SetReadLimit(c.MaxMessageSize)
 
-	var mt int
-	var message []byte
-	var err error
+	var (
+		mt      int
+		message []byte
+		err     error
+	)
 	for {
 		if mt, message, err = c.ws.ReadMessage(); err != nil {
 			if websocket.IsCloseError(err, CloseGoingAway, CloseNormalClosure) {
 				if log.GetLevel() >= log.DebugLevel {
-					log.WithFields(log.Fields{"logger": "ws.connection", "method": "ReadLoop"}).
-						Debug("Regular websocket close message received; closing...")
+					log.WithFields(log.Fields{"logger": "ws.connection.read"}).
+						Debug("Close message received; closing...")
 				}
-				c.CloseWithCode(CloseNormalClosure)
+				e := err.(*websocket.CloseError)
+				c.handleCloseMessage(e.Code, e.Text)
 				return
 			}
-			log.WithFields(log.Fields{"logger": "ws.connection", "method": "ReadLoop"}).
+			log.WithFields(log.Fields{"logger": "ws.connection.read"}).
 				WithError(err).Error("Unexpected websocket error received")
+			c.CloseWithReason(CloseAbnormalClosure, "Unexpected websocket error received")
 			return
 		}
 		switch mt {
 		case websocket.BinaryMessage:
 			if log.GetLevel() >= log.DebugLevel {
-				log.WithFields(log.Fields{"logger": "ws.connection", "method": "ReadLoop", "host": c.host}).
+				log.WithFields(log.Fields{"logger": "ws.connection.read", "id": c.ID, "remote": c.Remote}).
 					Debug("Binary message received")
 			}
-			c.in <- message
+			c.In <- message
 		case websocket.TextMessage:
 			if log.GetLevel() >= log.DebugLevel {
-				log.WithFields(log.Fields{"logger": "ws.connection", "method": "ReadLoop", "message": string(message)}).
+				log.WithFields(log.Fields{"logger": "ws.connection.read", "id": c.ID, "remote": c.Remote, "message": string(message)}).
 					Debug("Text message received")
 			}
-			c.intxt <- string(message[:])
+			c.Intxt <- string(message)
 		}
 	}
 }
 
 //WriteMessage writes a message with the given message type and payload.
-func (c *conn) WriteMessage(mt int, payload []byte) error {
+func (c *Connection) WriteMessage(mt int, payload []byte) error {
 	var err error
 	if err = c.ws.SetWriteDeadline(time.Now().Add(writeTimeout)); err != nil {
 		return err
@@ -272,43 +272,33 @@ func (c *conn) WriteMessage(mt int, payload []byte) error {
 	return c.ws.WriteMessage(mt, payload)
 }
 
-func (c *conn) OnClose(h func(code int, text string, origin bool) error) {
-	c.ch = h
-	c.ws.SetCloseHandler(func(code int, text string) error {
-		return h(code, text, Peer)
-	})
-}
-
 //WriteLoop pumps messages from the output channel to the websocket connection.
-func (c *conn) WriteLoop(out <-chan []byte) {
+func (c *Connection) WriteLoop() {
 	//ping ticker
-	ticker := time.NewTicker(c.pingPeriod)
+	ticker := time.NewTicker(c.PingPeriod)
 	defer func() {
 		ticker.Stop()
 		c.Close()
 	}()
 	for {
 		select {
-		case message, ok := <-out:
+		case msg, ok := <-c.Out:
 			if !ok {
-				if log.GetLevel() >= log.InfoLevel {
-					log.WithFields(log.Fields{"logger": "ws.connection", "method": "WriteLoop", "message": message}).
-						Info("The out channel is closed; aborting the write loop")
-				}
-				return
+				log.WithFields(log.Fields{"logger": "ws.connection.write", "message": msg}).
+					Warn("Output channel is closed")
+				continue
 			}
-			if err := c.WriteMessage(TextMessage, message); err != nil {
-				if log.GetLevel() >= log.InfoLevel {
-					log.WithFields(log.Fields{"logger": "ws.connection", "method": "WriteLoop", "message": message}).
-						WithError(err).Info("Error sending text message into the socket; aborting the write loop")
-				}
+			if err := c.WriteMessage(msg.MessageType, msg.Payload); err != nil {
+				log.WithFields(log.Fields{"logger": "ws.connection.write", "message": msg}).
+					WithError(err).Info("Error sending text message into the websocket")
+				c.CloseWithReason(CloseAbnormalClosure, "Error sending text message into the websocket")
 				return
 			}
 		case <-ticker.C:
 			log.Info("Writing ping")
 			if err := c.WriteMessage(PingMessage, []byte{}); err != nil {
 				if log.GetLevel() >= log.InfoLevel {
-					log.WithFields(log.Fields{"logger": "ws.connection", "method": "WriteLoop"}).
+					log.WithFields(log.Fields{"logger": "ws.connection.write"}).
 						WithError(err).Info("Error sending ping into the socket; aborting the write loop")
 				}
 				return
@@ -320,28 +310,20 @@ func (c *conn) WriteLoop(out <-chan []byte) {
 	}
 }
 
-func (c *conn) waitForPong() {
-	log.WithFields(log.Fields{"logger": "ws.connection", "method": "waitForPong"}).
-		Info("Setting pong timer")
+func (c *Connection) waitForPong() {
+	log.WithFields(log.Fields{"logger": "ws.connection.pong"}).Info("Setting pong timer")
 	select {
-	case <-time.After(c.pingTimeout):
-		log.WithFields(log.Fields{"logger": "ws.connection", "method": "waitForPong"}).
-			Info("Websocket connection timed out")
+	case <-time.After(c.PingTimeout):
+		log.WithFields(log.Fields{"logger": "ws.connection.pong"}).Info("Ping timed out, closing connection")
 		c.CloseWithCode(CloseNormalClosure)
 	case <-(*c).pong:
 		if log.GetLevel() >= log.DebugLevel {
-			log.WithFields(log.Fields{"logger": "ws.connection", "method": "waitForPong"}).
-				Info("Pong timeout cancelled")
+			log.WithFields(log.Fields{"logger": "ws.connection.pong"}).Info("Pong timeout cancelled")
 		}
 	}
 }
 
-func (c *conn) pongHandler(appData string) error {
+func (c *Connection) pongHandler(appData string) error {
 	c.pong <- true
-	return nil
-}
-
-func (c *conn) closeHandler(code int, reason string) error {
-	c.Close()
 	return nil
 }

@@ -11,10 +11,15 @@ type MessagesTestSuite struct {
 	suite.Suite
 }
 
-func (suite *MessagesTestSuite) TestConstructor() {
-	m, err := JSONMessage("title", "body", "")
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), `{"title":"title","body":"body"}`, string(m))
+func (suite *MessagesTestSuite) TestEncode() {
+	t := &struct {
+		ID      string `json:"id"`
+		One     int    `json:"one"`
+		private string
+	}{"test", 1, "noshow"}
+	b := EncodeMessage("test:msg", t)
+	a := assert.New(suite.T())
+	a.Equal(`{"title":"test:msg","body":"{\"id\":\"test\",\"one\":1}"}`, string(b))
 }
 
 func TestMessagesTestSuite(t *testing.T) {

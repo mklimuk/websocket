@@ -13,7 +13,7 @@ var upgrader = ws.Upgrader{
 
 //ConnectionFactory is a wrapper interface over gorilla websocket upgrader struct
 type ConnectionFactory interface {
-	UpgradeConnection(writer http.ResponseWriter, req *http.Request, channels []string) (Connection, error)
+	UpgradeConnection(writer http.ResponseWriter, req *http.Request, channels []string) (*Connection, error)
 }
 
 type gorillaFactory struct {
@@ -27,11 +27,11 @@ func NewFactory() ConnectionFactory {
 }
 
 //UpgradeConnection upgrades HTTP connection to a websocket
-func (g *gorillaFactory) UpgradeConnection(writer http.ResponseWriter, req *http.Request, channels []string) (Connection, error) {
+func (g *gorillaFactory) UpgradeConnection(writer http.ResponseWriter, req *http.Request, channels []string) (*Connection, error) {
 	var err error
 	var w *ws.Conn
 	if w, err = g.u.Upgrade(writer, req, nil); err != nil {
 		return nil, err
 	}
-	return newConnection(w, make(chan []byte, 32), req.Host, channels), nil
+	return newConnection(w, req.RemoteAddr, channels), nil
 }
