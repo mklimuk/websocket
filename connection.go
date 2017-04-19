@@ -161,7 +161,7 @@ func (c *Connection) CloseWithCode(code int) {
 func (c *Connection) handleCloseMessage(code int, reason string) {
 	// if we initialized close handshake we are responsible for closing the net connection
 	if c.state == StateClosing {
-		c.ws.Close()
+		defer c.ws.Close()
 		//we run the close listener if specified
 		if c.OnClose != nil {
 			defer c.OnClose(code, reason, Self)
@@ -172,8 +172,6 @@ func (c *Connection) handleCloseMessage(code int, reason string) {
 			by the onClose handler and the peer will close the network connection.
 			We should stop processing messages.
 		*/
-		c.control <- true
-		close(c.control)
 		c.state = StateClosing
 		if c.OnClose != nil {
 			defer c.OnClose(code, reason, Peer)
@@ -199,8 +197,6 @@ func (c *Connection) CloseWithReason(code int, reason string) {
 		*/
 		log.WithFields(log.Fields{"logger": "ws.connection.close", "conn": c.ID, "remote": c.Remote}).
 			Info("Initializing close handshake")
-		c.control <- true
-		close(c.control)
 		if err := c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(code, reason)); err != nil {
 			log.WithFields(log.Fields{"logger": "ws.connection", "method": "close"}).
 				WithError(err).Warn("Error writing close message to the connection")
@@ -212,7 +208,11 @@ func (c *Connection) CloseWithReason(code int, reason string) {
 			we set connection state to 'closed'
 		*/
 		log.WithFields(log.Fields{"logger": "ws.connection.close", "conn": c.ID, "remote": c.Remote}).
-			Info("Closing read channels")
+			Info("Closing channels")
+		c.control <- true
+		close(c.control)
+		// sleep to let the control channel trigger loops closing
+		time.Sleep(100 * time.Millisecond)
 		close(c.In)
 		close(c.Out)
 		close(c.pong)

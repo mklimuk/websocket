@@ -80,7 +80,7 @@ func (suite *ConnectionTestSuite) TestWritePing() {
 	ws := RawConnectionMock{}
 	ws.On("SetPongHandler", mock.Anything).Return()
 	ws.On("SetWriteDeadline", mock.AnythingOfType("time.Time")).Return(nil)
-	ws.On("WriteMessage", websocket.PingMessage, []byte{}).Return(nil).Once()
+	ws.On("WriteMessage", websocket.PingMessage, []byte{}).Return(nil)
 	ws.On("WriteMessage", websocket.CloseMessage, []byte{0x3, 0xe8}).Return(nil).Once()
 	c := newConnection(&ws, "localhost", []string{})
 	c.PingPeriod = 500 * time.Millisecond
