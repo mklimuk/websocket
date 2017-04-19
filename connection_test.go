@@ -42,6 +42,10 @@ func (suite *ConnectionTestSuite) TestClose() {
 	c.Close()
 	a := assert.New(suite.T())
 	a.Equal(c.state, StateClosing)
+	c.OnClose = func(code int, text string, origin DisconnectOrigin) error {
+		a.Equal(Self, origin)
+		return nil
+	}
 	c.handleCloseMessage(CloseNoStatusReceived, "")
 	a.Equal(c.state, StateClosed)
 	c = newConnection(&ws, "localhost", []string{})

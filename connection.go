@@ -165,8 +165,10 @@ func (c *Connection) handleCloseMessage(code int, reason string) {
 		/*
 			If the peer initialized the handshake, close message response is sent
 			by the onClose handler and the peer will close the network connection.
-			We should only stop processing messages.
+			We should stop processing messages.
 		*/
+		c.control <- true
+		close(c.control)
 		c.state = StateClosing
 		if c.OnClose != nil {
 			defer c.OnClose(code, reason, Peer)
@@ -293,20 +295,21 @@ func (c *Connection) WriteLoop() {
 			}
 			go c.waitForPong()
 		case <-c.control:
+			ticker.Stop()
 			return
 		}
 	}
 }
 
 func (c *Connection) waitForPong() {
-	log.WithFields(log.Fields{"logger": "ws.connection.pong"}).Info("Setting pong timer")
+	log.WithFields(log.Fields{"logger": "ws.connection.pong"}).Debug("Setting pong timer")
 	select {
 	case <-time.After(c.PingTimeout):
-		log.WithFields(log.Fields{"logger": "ws.connection.pong"}).Info("Ping timed out, closing connection")
+		log.WithFields(log.Fields{"logger": "ws.connection.pong"}).Debug("Ping timed out, closing connection")
 		c.CloseWithCode(CloseNormalClosure)
 	case <-(*c).pong:
 		if log.GetLevel() >= log.DebugLevel {
-			log.WithFields(log.Fields{"logger": "ws.connection.pong"}).Info("Pong timeout cancelled")
+			log.WithFields(log.Fields{"logger": "ws.connection.pong"}).Debug("Pong timeout cancelled")
 		}
 	}
 }
