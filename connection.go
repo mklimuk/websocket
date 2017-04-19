@@ -65,6 +65,12 @@ const (
 	PongMessage = 10
 )
 
+//Indicates who initialized connection close
+const (
+	Self = false
+	Peer = true
+)
+
 //Connection is a wrapper over raw websocket that exposes read and write channels
 //and defines read and write loops
 type Connection interface {
@@ -81,7 +87,7 @@ type Connection interface {
 	Out() chan []byte
 	Host() string
 	Channels() []string
-	OnClose(h func(code int, text string) error)
+	OnClose(h func(code int, text string, origin bool) error)
 }
 
 //rawWebsocket is an interface wrapper over *websocket.connection
@@ -108,6 +114,7 @@ type conn struct {
 	out            chan []byte
 	shutdown       sync.Mutex
 	closed         bool
+	ch             func(code int, text string, who bool) error //close handler
 	host           string
 	channels       []string
 	writeTimeout   time.Duration
@@ -188,6 +195,10 @@ func (c *conn) CloseWithReason(code int, reason string) {
 	if c.closed {
 		return
 	}
+	//we run the close listener if specified
+	if c.ch != nil {
+		defer c.ch(code, reason, Self)
+	}
 	log.WithFields(log.Fields{"logger": "ws.connection", "method": "Close", "host": c.host}).
 		Info("Closing connection")
 	// notify the outside world that the connection is closing
@@ -261,8 +272,11 @@ func (c *conn) WriteMessage(mt int, payload []byte) error {
 	return c.ws.WriteMessage(mt, payload)
 }
 
-func (c *conn) OnClose(h func(code int, text string) error) {
-	c.ws.SetCloseHandler(h)
+func (c *conn) OnClose(h func(code int, text string, origin bool) error) {
+	c.ch = h
+	c.ws.SetCloseHandler(func(code int, text string) error {
+		return h(code, text, Peer)
+	})
 }
 
 //WriteLoop pumps messages from the output channel to the websocket connection.

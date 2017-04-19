@@ -114,7 +114,7 @@ func (c *ConnectionMock) WriteLoop(out <-chan []byte) {
 }
 
 //OnClose is a mocked method
-func (c *ConnectionMock) OnClose(h func(code int, text string) error) {
+func (c *ConnectionMock) OnClose(h func(code int, text string, origin bool) error) {
 	c.Called(h)
 }
 
