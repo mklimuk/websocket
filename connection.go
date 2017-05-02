@@ -21,7 +21,7 @@ const (
 	pingPeriod = 7 * time.Second
 
 	// Maximum message size allowed from peer.
-	maxMessageSize = 8192
+	maxMessageSize = 32768
 )
 
 //Websocket connection close causes

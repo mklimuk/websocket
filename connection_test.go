@@ -96,7 +96,7 @@ func (suite *ConnectionTestSuite) TestReadLoop() {
 	ws.On("SetPongHandler", mock.Anything).Return()
 	c := newConnection(&ws, "localhost", []string{})
 	msg := []byte{'t', 'e', 's', 't'}
-	ws.On("SetReadLimit", int64(8192)).Return()
+	ws.On("SetReadLimit", int64(32768)).Return()
 	ws.On("ReadMessage").Return(websocket.TextMessage, msg, nil).Once()
 	ws.On("ReadMessage").Return(websocket.BinaryMessage, msg, nil).Once()
 	ws.On("ReadMessage").Return(websocket.BinaryMessage, []byte{}, errors.New("read error")).Once()
