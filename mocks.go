@@ -133,3 +133,8 @@ func (h *HubMock) RegisterConnection(writer http.ResponseWriter, req *http.Reque
 func (h *HubMock) RegisterListener(channel string, l ConnListener) {
 	h.Called(channel, l)
 }
+
+//RegisterOnConnectListener is a mocked method
+func (h *HubMock) RegisterOnConnectListener(l OnConnectListener) {
+	h.Called(l)
+}

@@ -2,6 +2,7 @@ package websocket
 
 import (
 	"net/http"
+	"sync"
 
 	log "github.com/Sirupsen/logrus"
 )
@@ -16,6 +17,12 @@ type Hub interface {
 	Broadcast(msg Message, channel string)
 	RegisterConnection(writer http.ResponseWriter, req *http.Request, channels []string) (*Connection, error)
 	RegisterListener(channel string, l ConnListener)
+	RegisterOnConnectListener(l OnConnectListener)
+}
+
+//OnConnectListener gets notified when a new connection is registered by the hub
+type OnConnectListener interface {
+	OnConnection(c *Connection)
 }
 
 //ConnListener is a Connection listener interface
@@ -26,15 +33,22 @@ type ConnListener interface {
 
 //hub maintains a list of active channels with associated websocket connections
 type hub struct {
+	sync.Mutex
 	//channels is a hashmap of hashmaps containing connections
-	channels  map[string]map[string]*Connection
-	listeners map[string][]ConnListener
-	factory   ConnectionFactory
+	channels   map[string]map[string]*Connection
+	listeners  map[string][]ConnListener
+	clisteners []OnConnectListener
+	factory    ConnectionFactory
 }
 
 //NewHub is a hub constructor
 func NewHub() Hub {
-	h := hub{make(map[string]map[string]*Connection), make(map[string][]ConnListener), &gorillaFactory{}}
+	h := hub{
+		channels:   make(map[string]map[string]*Connection),
+		listeners:  make(map[string][]ConnListener),
+		clisteners: []OnConnectListener{},
+		factory:    &gorillaFactory{},
+	}
 	h.channels[GeneralChannel] = make(map[string]*Connection)
 	return Hub(&h)
 }
@@ -51,6 +65,8 @@ func (h *hub) RegisterConnection(writer http.ResponseWriter, req *http.Request, 
 		log.WithFields(log.Fields{"logger": "ws.hub.register", "connection": c.ID, "remote": c.Remote, "channels": channels}).
 			Info("Registering a websocket Connection")
 	}
+	h.Lock()
+	defer h.Unlock()
 	h.channels[GeneralChannel][c.ID] = c
 	for _, ch := range channels {
 		if _, ok := h.channels[ch]; !ok {
@@ -62,6 +78,7 @@ func (h *hub) RegisterConnection(writer http.ResponseWriter, req *http.Request, 
 	go c.WriteLoop()
 	go c.ReadLoop()
 	go h.listen(c)
+	go h.callOnConnectListeners(c)
 
 	return c, nil
 }
@@ -72,6 +89,14 @@ func (h *hub) RegisterListener(ch string, l ConnListener) {
 			Info("Registering a channel listener")
 	}
 	h.listeners[ch] = append(h.listeners[ch], l)
+}
+
+func (h *hub) RegisterOnConnectListener(l OnConnectListener) {
+	if log.GetLevel() >= log.InfoLevel {
+		log.WithFields(log.Fields{"logger": "ws.hub.listener"}).
+			Info("Registering onConnect listener")
+	}
+	h.clisteners = append(h.clisteners, l)
 }
 
 func (h *hub) Broadcast(msg Message, ch string) {
@@ -103,9 +128,17 @@ func (h *hub) listen(c *Connection) {
 }
 
 func (h *hub) remove(c *Connection) {
+	h.Lock()
+	defer h.Unlock()
 	//delete the connection from broadcast channels
 	for _, ch := range c.Channels {
 		delete(h.channels[ch], c.ID)
+	}
+}
+
+func (h *hub) callOnConnectListeners(c *Connection) {
+	for _, l := range h.clisteners {
+		l.OnConnection(c)
 	}
 }
 
