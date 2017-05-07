@@ -52,8 +52,6 @@ func (suite *ConnectionTestSuite) TestClose() {
 	ws.On("SetWriteDeadline", mock.AnythingOfType("time.Time")).Return(errors.New("test error")).Once()
 	c.Close()
 	a.Equal(c.state, StateClosing)
-	c.Close()
-	a.Equal(c.state, StateClosed)
 	ws.AssertExpectations(suite.T())
 }
 

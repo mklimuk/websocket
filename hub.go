@@ -105,7 +105,10 @@ func (h *hub) Broadcast(msg Message, ch string) {
 			log.WithFields(log.Fields{"logger": "ws.hub.broadcast", "remote": c.Remote, "id": c.ID, "channel": ch}).
 				Debug("Sending message into websocket")
 		}
-		c.Out <- msg
+
+		if c.GetState() == StateOpen {
+			c.Out <- msg
+		}
 	}
 }
 
