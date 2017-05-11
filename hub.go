@@ -16,6 +16,7 @@ const (
 type Hub interface {
 	Broadcast(msg Message, channel string)
 	RegisterConnection(writer http.ResponseWriter, req *http.Request, channels []string) (*Connection, error)
+	RegisterOnChannels(c *Connection, channels []string)
 	RegisterListener(channel string, l ConnListener)
 	RegisterOnConnectListener(l OnConnectListener)
 }
@@ -53,6 +54,19 @@ func NewHub() Hub {
 	return Hub(&h)
 }
 
+func (h *hub) RegisterOnChannels(c *Connection, channels []string) {
+	h.Lock()
+	defer h.Unlock()
+	for _, ch := range channels {
+		if _, ok := h.channels[ch]; !ok {
+			h.channels[ch] = make(map[string]*Connection)
+		}
+		h.channels[ch][c.ID] = c
+	}
+	go h.listen(c)
+	go h.callOnConnectListeners(c)
+}
+
 func (h *hub) RegisterConnection(writer http.ResponseWriter, req *http.Request, channels []string) (*Connection, error) {
 	var (
 		err error
@@ -65,20 +79,10 @@ func (h *hub) RegisterConnection(writer http.ResponseWriter, req *http.Request, 
 		log.WithFields(log.Fields{"logger": "ws.hub.register", "connection": c.ID, "remote": c.Remote, "channels": channels}).
 			Info("Registering a websocket Connection")
 	}
-	h.Lock()
-	defer h.Unlock()
-	h.channels[GeneralChannel][c.ID] = c
-	for _, ch := range channels {
-		if _, ok := h.channels[ch]; !ok {
-			h.channels[ch] = make(map[string]*Connection)
-		}
-		h.channels[ch][c.ID] = c
-	}
 
 	go c.WriteLoop()
 	go c.ReadLoop()
-	go h.listen(c)
-	go h.callOnConnectListeners(c)
+	h.RegisterOnChannels(c, channels)
 
 	return c, nil
 }

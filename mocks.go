@@ -138,3 +138,8 @@ func (h *HubMock) RegisterListener(channel string, l ConnListener) {
 func (h *HubMock) RegisterOnConnectListener(l OnConnectListener) {
 	h.Called(l)
 }
+
+//RegisterOnChannels is a mocked method
+func (h *HubMock) RegisterOnChannels(c *Connection, channels []string) {
+	h.Called(c, channels)
+}
