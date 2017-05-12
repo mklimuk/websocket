@@ -189,7 +189,7 @@ func (c *Connection) handleCloseMessage(code int, reason string) {
 	c.control <- true
 	close(c.control)
 	// sleep to let the control channel trigger loops closing
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(5 * time.Millisecond)
 	close(c.In)
 	close(c.Out)
 	close(c.pong)
@@ -287,7 +287,6 @@ func (c *Connection) WriteLoop() {
 	ticker := time.NewTicker(c.PingPeriod)
 	defer func() {
 		ticker.Stop()
-		c.Close()
 	}()
 	for {
 		select {
