@@ -105,12 +105,11 @@ func (h *hub) RegisterOnConnectListener(l OnConnectListener) {
 
 func (h *hub) Broadcast(msg Message, ch string) {
 	for _, c := range h.channels[ch] {
-		if log.GetLevel() >= log.DebugLevel {
-			log.WithFields(log.Fields{"logger": "ws.hub.broadcast", "remote": c.Remote, "id": c.ID, "channel": ch}).
-				Debug("Sending message into websocket")
-		}
-
 		if c.GetState() == StateOpen {
+			if log.GetLevel() >= log.DebugLevel {
+				log.WithFields(log.Fields{"logger": "ws.hub.broadcast", "remote": c.Remote, "id": c.ID, "channel": ch}).
+					Debug("Sending message into websocket")
+			}
 			c.Out <- msg
 		}
 	}
