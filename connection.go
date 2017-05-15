@@ -226,8 +226,6 @@ func (c *Connection) CloseWithReason(code int, reason string) {
 
 //ReadMessage is a proxy to underlying gorilla websocket read
 func (c *Connection) ReadMessage() (int, []byte, error) {
-	c.Lock()
-	defer c.Unlock()
 	return c.ws.ReadMessage()
 }
 
@@ -276,8 +274,6 @@ func (c *Connection) doWriteMessage(mt int, payload []byte) error {
 
 //WriteMessage writes a message with the given message type and payload.
 func (c *Connection) WriteMessage(mt int, payload []byte) error {
-	c.Lock()
-	defer c.Unlock()
 	return c.doWriteMessage(mt, payload)
 }
 
@@ -301,8 +297,8 @@ func (c *Connection) WriteLoop() {
 					Debug("Sending message into websocket")
 			}
 			if err := c.WriteMessage(msg.MessageType, msg.Payload); err != nil {
-				log.WithFields(log.Fields{"logger": "ws.connection.write", "conn": c.ID, "message": msg}).
-					WithError(err).Error("Error sending text message into the websocket")
+				log.WithFields(log.Fields{"logger": "ws.connection.write", "conn": c.ID, "message": string(msg.Payload)}).
+					WithError(err).Error("Error sending message into the websocket")
 				c.CloseWithReason(CloseAbnormalClosure, "Error sending text message into the websocket")
 				return
 			}
