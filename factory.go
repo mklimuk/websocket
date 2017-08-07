@@ -22,7 +22,7 @@ type gorillaFactory struct {
 
 //NewFactory is the connection factory constructor
 func NewFactory() ConnectionFactory {
-	g := gorillaFactory{ws.Upgrader{}}
+	g := gorillaFactory{ws.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}}
 	return &g
 }
 
